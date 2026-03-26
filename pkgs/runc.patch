@@ -1,0 +1,42 @@
+diff --git a/libs/linglong/src/linglong/runtime/container.cpp b/libs/linglong/src/linglong/runtime/container.cpp
+index 296de557..db1e7977 100644
+--- a/libs/linglong/src/linglong/runtime/container.cpp
++++ b/libs/linglong/src/linglong/runtime/container.cpp
+@@ -227,6 +227,11 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+ 
+     this->cfg.process->args = { "/run/linglong/entrypoint.sh" };
+ 
++    this->cfg.linux_->rootfsPropagation = std::nullopt;
++    this->cfg.linux_->gidMappings = std::nullopt;
++    this->cfg.linux_->uidMappings = std::nullopt;
++    this->cfg.process->user = std::nullopt;
++
+ #ifdef LINGLONG_FONT_CACHE_GENERATOR
+     {
+         std::ofstream ofs(bundle.absoluteFilePath("conf.d/99-linglong.conf").toStdString());
+diff --git a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp b/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
+index 787e70cb..fd4e705d 100644
+--- a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
++++ b/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
+@@ -167,10 +167,6 @@ ContainerCfgBuilder &ContainerCfgBuilder::bindDev() noexcept
+                .options = string_list{ "nosuid", "noexec", "nodev", "mode=1777" },
+                .source = "shm",
+                .type = "tmpfs" },
+-        Mount{ .destination = "/dev/mqueue",
+-               .options = string_list{ "rbind", "nosuid", "noexec", "nodev" },
+-               .source = "/dev/mqueue",
+-               .type = "bind" },
+     };
+ 
+     return *this;
+@@ -615,10 +611,8 @@ bool ContainerCfgBuilder::prepare() noexcept
+     auto linux_ = ocppi::runtime::config::types::Linux{};
+     linux_.rootfsPropagation = RootfsPropagation::Slave;
+     linux_.namespaces = std::vector<NamespaceReference>{
+-        NamespaceReference{ .type = NamespaceType::Pid },
+         NamespaceReference{ .type = NamespaceType::Mount },
+         NamespaceReference{ .type = NamespaceType::Uts },
+-        NamespaceReference{ .type = NamespaceType::User },
+     };
+     if (isolateNetWorkEnabled) {
+         linux_.namespaces->push_back(NamespaceReference{ .type = NamespaceType::Network });

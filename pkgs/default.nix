@@ -50,6 +50,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   patches = [
     ./fix-host-path.patch
+    ./runc.patch
   ];
 
   postPatch = ''
