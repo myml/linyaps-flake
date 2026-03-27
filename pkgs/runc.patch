@@ -1,7 +1,16 @@
 diff --git a/libs/linglong/src/linglong/runtime/container.cpp b/libs/linglong/src/linglong/runtime/container.cpp
-index 296de557..db1e7977 100644
+index 296de557..5feebe8f 100644
 --- a/libs/linglong/src/linglong/runtime/container.cpp
 +++ b/libs/linglong/src/linglong/runtime/container.cpp
+@@ -203,7 +203,7 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+ 
+         // TODO: maybe we could use a symlink '/usr/bin/ll-init' points to
+         // '/run/linglong/container-init' will be better
+-        ofs << "#!/run/linglong/container-init /bin/bash\n";
++        ofs << "#!/usr/bin/env /bin/bash\n";
+         ofs << "source /etc/profile\n"; // we need use /etc/profile to generate all needed
+                                         // environment variables
+         ofs << "exec ";
 @@ -227,6 +227,11 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
  
      this->cfg.process->args = { "/run/linglong/entrypoint.sh" };
@@ -14,6 +23,19 @@ index 296de557..db1e7977 100644
  #ifdef LINGLONG_FONT_CACHE_GENERATOR
      {
          std::ofstream ofs(bundle.absoluteFilePath("conf.d/99-linglong.conf").toStdString());
+@@ -264,9 +269,10 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+     }
+     qDebug() << "run container in " << bundle.c_str();
+     // 禁用crun自己创建cgroup，便于AM识别和管理玲珑应用
+-    opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
++    // opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
+ 
+-    auto result = this->cli.run(this->id.toStdString(), bundle, opt);
++    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
++    auto result = this->cli.run(this->id.toStdString() + "_" + std::to_string(now), bundle, opt);
+ 
+     if (!result) {
+         return LINGLONG_ERR("cli run", result);
 diff --git a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp b/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
 index 787e70cb..fd4e705d 100644
 --- a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
