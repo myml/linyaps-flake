@@ -1,5 +1,43 @@
+diff --git a/libs/linglong/src/linglong/cli/cli.cpp b/libs/linglong/src/linglong/cli/cli.cpp
+index 0678c63a..6edfae1d 100644
+--- a/libs/linglong/src/linglong/cli/cli.cpp
++++ b/libs/linglong/src/linglong/cli/cli.cpp
+@@ -612,10 +612,10 @@ int Cli::run([[maybe_unused]] CLI::App *subcommand)
+     auto pid = getpid();
+ 
+     // NOTE: ll-box is not support running as root for now.
+-    if (uid == 0) {
+-        qInfo() << "'ll-cli run' currently does not support running as root.";
+-        return -1;
+-    }
++    // if (uid == 0) {
++    //     qInfo() << "'ll-cli run' currently does not support running as root.";
++    //     return -1;
++    // }
+ 
+     auto userContainerDir = std::filesystem::path{ "/run/linglong" } / std::to_string(uid);
+     if (auto ret = ensureDirectory(userContainerDir); !ret) {
+diff --git a/libs/linglong/src/linglong/repo/repo_cache.cpp b/libs/linglong/src/linglong/repo/repo_cache.cpp
+index 14f03edc..0aa2a638 100644
+--- a/libs/linglong/src/linglong/repo/repo_cache.cpp
++++ b/libs/linglong/src/linglong/repo/repo_cache.cpp
+@@ -134,10 +134,10 @@ utils::error::Result<void> RepoCache::rebuildCache(const api::types::v1::RepoCon
+     }
+ 
+     // FIXME: ll-cli may initialize repo, it can make states.json own by root
+-    if (getuid() == 0) {
+-        std::cerr << "Rebuild the cache by root, skip to write data to states.json";
+-        return LINGLONG_OK;
+-    }
++    // if (getuid() == 0) {
++    //     std::cerr << "Rebuild the cache by root, skip to write data to states.json";
++    //     return LINGLONG_OK;
++    // }
+ 
+     auto ret = writeToDisk();
+     if (!ret) {
 diff --git a/libs/linglong/src/linglong/runtime/container.cpp b/libs/linglong/src/linglong/runtime/container.cpp
-index 296de557..5feebe8f 100644
+index 296de557..b5bd5a50 100644
 --- a/libs/linglong/src/linglong/runtime/container.cpp
 +++ b/libs/linglong/src/linglong/runtime/container.cpp
 @@ -203,7 +203,7 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
@@ -7,14 +45,15 @@ index 296de557..5feebe8f 100644
          // TODO: maybe we could use a symlink '/usr/bin/ll-init' points to
          // '/run/linglong/container-init' will be better
 -        ofs << "#!/run/linglong/container-init /bin/bash\n";
-+        ofs << "#!/usr/bin/env /bin/bash\n";
++        ofs << "#!/usr/bin/env /bin/bash\n"; // 没有隔离pid，不能使用init
          ofs << "source /etc/profile\n"; // we need use /etc/profile to generate all needed
                                          // environment variables
          ofs << "exec ";
-@@ -227,6 +227,11 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+@@ -227,6 +227,12 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
  
      this->cfg.process->args = { "/run/linglong/entrypoint.sh" };
  
++    // 使用root运行
 +    this->cfg.linux_->rootfsPropagation = std::nullopt;
 +    this->cfg.linux_->gidMappings = std::nullopt;
 +    this->cfg.linux_->uidMappings = std::nullopt;
@@ -23,21 +62,23 @@ index 296de557..5feebe8f 100644
  #ifdef LINGLONG_FONT_CACHE_GENERATOR
      {
          std::ofstream ofs(bundle.absoluteFilePath("conf.d/99-linglong.conf").toStdString());
-@@ -264,9 +269,10 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+@@ -264,9 +270,11 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
      }
      qDebug() << "run container in " << bundle.c_str();
      // 禁用crun自己创建cgroup，便于AM识别和管理玲珑应用
 -    opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
-+    // opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
- 
+-
 -    auto result = this->cli.run(this->id.toStdString(), bundle, opt);
++    // opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
++    // tmpfs有问题，runc在退出容器时无法清理
++    opt.GlobalOption::extra.emplace_back("--root=/root/.cache/runc");
 +    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
 +    auto result = this->cli.run(this->id.toStdString() + "_" + std::to_string(now), bundle, opt);
  
      if (!result) {
          return LINGLONG_ERR("cli run", result);
 diff --git a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp b/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
-index 787e70cb..fd4e705d 100644
+index 787e70cb..e5dc9164 100644
 --- a/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
 +++ b/libs/oci-cfg-generators/src/linglong/oci-cfg-generators/container_cfg_builder.cpp
 @@ -167,10 +167,6 @@ ContainerCfgBuilder &ContainerCfgBuilder::bindDev() noexcept
@@ -62,3 +103,55 @@ index 787e70cb..fd4e705d 100644
      };
      if (isolateNetWorkEnabled) {
          linux_.namespaces->push_back(NamespaceReference{ .type = NamespaceType::Network });
+@@ -1237,50 +1231,7 @@ bool ContainerCfgBuilder::buildMountNetworkConf() noexcept
+ {
+     networkConfMount = std::vector<Mount>{};
+ 
+-    std::filesystem::path resolvConf{ "/etc/resolv.conf" };
+-    std::error_code ec;
+-    if (std::filesystem::exists(resolvConf, ec)) {
+-        // /etc/resolv.conf is volatile on host, we create a new symlink in the bundle
+-        // directory pointing to the actual target, and then mount it with the
+-        // 'copy-symlink' option, which tells the runtime to recreate the symlink inside
+-        // the container.
+-        // NOTE: it's not working if /etc/resolv.conf is a symlink, and points to a
+-        // different path after container started.
+-        if (hostRootMount) {
+-            auto target = resolvConf;
+-            if (std::filesystem::is_symlink(resolvConf, ec)) {
+-                std::array<char, PATH_MAX + 1> buf{};
+-                auto *rpath = realpath(resolvConf.string().c_str(), buf.data());
+-                if (rpath == nullptr) {
+-                    error_.reason =
+-                      "Failed to read symlink " + resolvConf.string() + ": " + strerror(errno);
+-                    error_.code = BUILD_NETWORK_CONF_ERROR;
+-                    return false;
+-                }
+-                target = std::filesystem::path{ rpath };
+-            }
+-
+-            target = std::filesystem::path{ "/run/host/rootfs" } / target.lexically_relative("/");
+-            auto bundleResolvConf = bundlePath / "resolv.conf";
+-            std::filesystem::create_symlink(target, bundleResolvConf, ec);
+-            if (ec) {
+-                error_.reason =
+-                  "Failed to create symlink " + bundleResolvConf.string() + ": " + ec.message();
+-                error_.code = BUILD_NETWORK_CONF_ERROR;
+-                return false;
+-            }
+-            networkConfMount->emplace_back(Mount{ .destination = resolvConf.string(),
+-                                                  .options = string_list{ "rbind", "copy-symlink" },
+-                                                  .source = bundleResolvConf,
+-                                                  .type = "bind" });
+-        } else {
+-            networkConfMount->emplace_back(Mount{ .destination = resolvConf.string(),
+-                                                  .options = string_list{ "rbind", "ro" },
+-                                                  .source = resolvConf,
+-                                                  .type = "bind" });
+-        }
+-    }
+-
++    bindIfExist(*networkConfMount, "/etc/resolv.conf");
+     bindIfExist(*networkConfMount, "/etc/resolvconf");
+     bindIfExist(*networkConfMount, "/etc/hosts");
+     return true;
