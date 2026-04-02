@@ -1,5 +1,5 @@
 diff --git a/libs/linglong/src/linglong/cli/cli.cpp b/libs/linglong/src/linglong/cli/cli.cpp
-index 0678c63a..6edfae1d 100644
+index 0678c63a..05a7bf4a 100644
 --- a/libs/linglong/src/linglong/cli/cli.cpp
 +++ b/libs/linglong/src/linglong/cli/cli.cpp
 @@ -612,10 +612,10 @@ int Cli::run([[maybe_unused]] CLI::App *subcommand)
@@ -17,6 +17,20 @@ index 0678c63a..6edfae1d 100644
  
      auto userContainerDir = std::filesystem::path{ "/run/linglong" } / std::to_string(uid);
      if (auto ret = ensureDirectory(userContainerDir); !ret) {
+@@ -785,13 +785,6 @@ int Cli::run([[maybe_unused]] CLI::App *subcommand)
+     cfgBuilder.enableFontCache();
+ #endif
+ 
+-    auto appCache = this->ensureCache(runContext, cfgBuilder);
+-    if (!appCache) {
+-        this->printer.printErr(LINGLONG_ERRV(appCache));
+-        return -1;
+-    }
+-    cfgBuilder.setAppCache(*appCache).enableLDCache();
+-
+     if (!cfgBuilder.build()) {
+         auto err = cfgBuilder.getError();
+         qCritical() << "build cfg error: " << QString::fromStdString(err.reason);
 diff --git a/libs/linglong/src/linglong/repo/repo_cache.cpp b/libs/linglong/src/linglong/repo/repo_cache.cpp
 index 14f03edc..0aa2a638 100644
 --- a/libs/linglong/src/linglong/repo/repo_cache.cpp
