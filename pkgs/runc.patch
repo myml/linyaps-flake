@@ -37,7 +37,7 @@ index 14f03edc..0aa2a638 100644
      auto ret = writeToDisk();
      if (!ret) {
 diff --git a/libs/linglong/src/linglong/runtime/container.cpp b/libs/linglong/src/linglong/runtime/container.cpp
-index 296de557..b5bd5a50 100644
+index 296de557..58d0abb4 100644
 --- a/libs/linglong/src/linglong/runtime/container.cpp
 +++ b/libs/linglong/src/linglong/runtime/container.cpp
 @@ -203,7 +203,7 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
@@ -62,7 +62,7 @@ index 296de557..b5bd5a50 100644
  #ifdef LINGLONG_FONT_CACHE_GENERATOR
      {
          std::ofstream ofs(bundle.absoluteFilePath("conf.d/99-linglong.conf").toStdString());
-@@ -264,9 +270,11 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
+@@ -264,9 +270,9 @@ utils::error::Result<void> Container::run(const ocppi::runtime::config::types::P
      }
      qDebug() << "run container in " << bundle.c_str();
      // 禁用crun自己创建cgroup，便于AM识别和管理玲珑应用
@@ -70,8 +70,6 @@ index 296de557..b5bd5a50 100644
 -
 -    auto result = this->cli.run(this->id.toStdString(), bundle, opt);
 +    // opt.GlobalOption::extra.emplace_back("--cgroup-manager=disabled");
-+    // tmpfs有问题，runc在退出容器时无法清理
-+    opt.GlobalOption::extra.emplace_back("--root=/root/.cache/runc");
 +    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
 +    auto result = this->cli.run(this->id.toStdString() + "_" + std::to_string(now), bundle, opt);
  
